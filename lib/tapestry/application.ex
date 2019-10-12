@@ -21,18 +21,16 @@ defmodule Tapestry.Application do
 
     # {_nodes, _requests} = parse_args(args)
 
-    IO.puts("yas")
+    IO.puts("bruh")
     spawn_peers(15)
 
 
-    # Process.monitor(pid)
-
-    # receive do
-    #   {:DOWN, _ref, :process, _object, _reason} ->
-    #     nil
-    # end
-
-
+    {:ok, pid} = Tapestry.Collector.start_link()
+    Process.monitor(pid)
+    receive do
+      {:DOWN, _ref, :process, _object, _reason} ->
+        nil
+    end
   end
 end
 

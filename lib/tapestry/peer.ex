@@ -1,13 +1,12 @@
 
 defmodule Tapestry.Peer do
   use GenServer
-  defmodule PeerData do
-    defstruct neighbors: %{}, id: nil
-  end
+
+  defstruct neighbors: %{}, id: nil
 
   def start_link(string_hash) do
     <<_::216, id::40>> = :crypto.hash(:sha256, string_hash)
-    GenServer.start_link(__MODULE__, %PeerData{id: id}, [])
+    GenServer.start_link(__MODULE__, %Tapestry.Peer{id: id}, [])
   end
 
   def init(state) do
