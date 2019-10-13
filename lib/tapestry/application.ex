@@ -21,9 +21,11 @@ defmodule Tapestry.Application do
 
     # {_nodes, _requests} = parse_args(args)
 
-    IO.puts("bruh")
-    spawn_peers(15)
+    #spawn_peers(15)
 
+
+    Tapestry.Helpers.get_level(5689315, 12227869315)
+|> IO.puts()
 
     {:ok, pid} = Tapestry.Collector.start_link()
     Process.monitor(pid)
