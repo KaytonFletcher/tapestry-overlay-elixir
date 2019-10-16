@@ -16,42 +16,50 @@ defmodule Tapestry.Manager do
 
   # API
 
-  def hop() do
-    GenServer.call(@me, :hop)
+  def add_node(pid) do
+    GenServer.cast(@me, {:add_node, pid})
   end
 
+  def req_made() do
+    GenServer.cast(@me, {:req_made, self()})
+  end
+
+  def hop() do
+    GenServer.cast(@me, :hop)
+  end
 
   # Server
 
   @impl GenServer
-  def handle_call(:hop, _from, {nodes, reqs, hops, reqs_per_node}) do
-    {:reply, :ok, {nodes, reqs, hops+1, reqs_per_node}}
+  def handle_cast(:hop, {nodes, reqs, hops, reqs_per_node}) do
+    {:reply, :ok, {nodes, reqs, hops + 1, reqs_per_node}}
   end
 
   @impl GenServer
-  def handle_info(:spawn_nodes, {nodes, _reqs, _hops, reqs_per_node} = st) do
+  def handle_cast({:req_made, pid}, {nodes, reqs, hops, reqs_per_node}) do
+    {:reply, :ok, {nodes, reqs, hops, Map.update(reqs_per_node, pid, 1, fn val -> val + 1 end)}}
+  end
 
+  @impl GenServer
+  def handle_info(:spawn_nodes, {nodes, _reqs, _hops, node_req_map} = st) do
     {:ok, pid} = Tapestry.Peer.start_link("node1")
-    mp = Map.put(reqs_per_node, pid, 0)
-
-    for index <- 2..nodes, into: mp do
-      {:ok, pid} = Tapestry.Peer.start_link("node1")
-    end
-
-
-    {:stop, :normal, nil}
+    mp = Map.put(node_req_map, pid, 0)
+    spawn_peers(mp, nodes-1)
+    {:reply, :ok, st}
   end
 
-  @impl GenServer
-  def handle_info(:kill, _st) do
-    System.halt(0)
-    {:stop, :normal, nil}
-  end
 
-  defp spawn_peers(num_nodes) do
+
+  defp spawn_peers(node_req_map, num_nodes) do
     if(num_nodes > 0) do
-      Tapestry.Peer.start_link("node#{num_nodes}")
-      spawn_peers(num_nodes-1)
+      # generates random id using sha256 for each node
+      id = Tapestry.Helpers.generate_id("node#{num_nodes}")
+
+      # tells random peer to publish new peer
+      {pid, _reqs} = Enum.random(node_req_map)
+      GenServer.cast(pid, {:next_hop, id})
+
+      spawn_peers(node_req_map, num_nodes - 1)
     end
   end
 end

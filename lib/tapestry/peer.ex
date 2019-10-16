@@ -6,10 +6,8 @@ defmodule Tapestry.Peer do
 
   @base 16
   @id_length 40
-  @total_bits 256
 
-  def start_link(string_hash) do
-    <<_::216, id::40>> = :crypto.hash(:sha256, string_hash)
+  def start_link(id) do
     GenServer.start_link(__MODULE__, %Tapestry.Peer{id: id}, [])
   end
 
@@ -52,7 +50,7 @@ defmodule Tapestry.Peer do
     end
   end
 
-  defp find_peer_at_level(lv, r, neighbors, 16) do
+  defp find_peer_at_level(lv, r, neighbors, @base) do
     self()
   end
 
