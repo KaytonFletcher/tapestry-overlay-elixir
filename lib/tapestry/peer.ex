@@ -8,11 +8,6 @@ defmodule Tapestry.Peer do
   @id_length 40
   @total_bits 256
 
-  def start_link(string_hash, start) do
-    <<_::216, id::40>> = :crypto.hash(:sha256, string_hash)
-    GenServer.start_link(__MODULE__, %Tapestry.Peer{id: id, root: start}, [])
-  end
-
   def start_link(string_hash) do
     <<_::216, id::40>> = :crypto.hash(:sha256, string_hash)
     GenServer.start_link(__MODULE__, %Tapestry.Peer{id: id}, [])
@@ -27,27 +22,35 @@ defmodule Tapestry.Peer do
     {:ok, st}
   end
 
-  def handle_info({:find_root, start_pid}, st) do
-    %Tapestry.Peer{id: id, neighbors: neighbors} = GenServer.call(start_pid, :get_neighbors)
+
+  def handle_cast({:next_hop, id}, st) do
+    IO.puts("NEXT HOP WITHOUT LEVEL")
     lv = Tapestry.Helpers.get_level(id, Map.get(st, :id))
-
-    Enum.each(0..15, fn pg ->
-      pid = Map.get(neighbors, {lv, pg})
-      if(pid) do
-
-      end
-    end)
+    next_hop(lv, id, Map.get(st, :neighbors))
   end
 
-  def next_hop(lv, id, neighbors) do
+  def handle_cast({:next_hop, lv, id}, st) do
+    IO.inspect(lv, label: "NEXT HOP WITH LEVEL")
+    next_hop(lv, id, Map.get(st, :neighbors))
+  end
+
+  defp next_hop(lv, id, neighbors) do
+    # if we have gone through all 40 levels, we know we are at root
     if(lv == @id_length) do
-      self()
+      # publish node or object with id = id
     else
       r = rem(div(id, trunc(:math.pow(10, lv))), 10)
-      find
+      pid = find_peer_at_level(lv, r, neighbors)
+
+      # if find_peer_at_level returns the pid that called the function, no neighbors to hop to
+      if(pid === self()) do
+        # publish node or object with id = id
+      else
+        Tapestry.Manager.hop()
+        GenServer.cast(pid, {:next_hop, lv+1, id})
+      end
     end
   end
-
 
   defp find_peer_at_level(lv, r, neighbors, 16) do
     self()
