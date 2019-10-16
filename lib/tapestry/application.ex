@@ -17,17 +17,16 @@ defmodule Tapestry.Application do
   end
 
 
-  def main(_args \\ []) do
+  def main(args \\ []) do
 
-    # {_nodes, _requests} = parse_args(args)
+    {nodes, requests} = parse_args(args)
 
     #spawn_peers(15)
 
 
-    Tapestry.Helpers.get_level(5689315, 12227869315)
-|> IO.puts()
+    {:ok, pid} = Tapestry.Manager.start_link({nodes, requests})
 
-    {:ok, pid} = Tapestry.Collector.start_link()
+
     Process.monitor(pid)
     receive do
       {:DOWN, _ref, :process, _object, _reason} ->

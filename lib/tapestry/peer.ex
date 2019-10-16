@@ -39,26 +39,32 @@ defmodule Tapestry.Peer do
     end)
   end
 
-  defp next_hop(lv, id) do
+  def next_hop(lv, id, neighbors) do
     if(lv == @id_length) do
       self()
     else
-      d = rem(Float.floor(id/:math.pow(10, lv)), 10)
-      IO.inspect(d, label: "Remainder at lv")
-
+      r = rem(div(id, trunc(:math.pow(10, lv))), 10)
+      find
     end
   end
 
-  defp find_peer_at_level(lv, current_id, current_neighbors) do
 
-
+  defp find_peer_at_level(lv, r, neighbors, 16) do
+    self()
   end
 
-  defp find_peer_at_level(lv) do
-    find_peer_at_level(lv, nil)
+  defp find_peer_at_level(lv, r, neighbors, count) do
+    peer = Map.get(neighbors, {lv,r})
+    if(peer) do
+      peer
+    else
+      find_peer_at_level(lv, rem(r+1, @base), neighbors, count+1)
+    end
   end
 
-
+  defp find_peer_at_level(lv, r, neighbors) do
+    find_peer_at_level(lv, r, neighbors, 0)
+  end
 
   def handle_call(:get_neighbors, state) do
     {:reply, state, state}
