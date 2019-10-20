@@ -6,6 +6,7 @@ defmodule Gossip.MixProject do
       app: :tapestry,
       version: "0.1.0",
       elixir: "~> 1.9",
+      escript: escript(),
       deps: deps()
     ]
   end
@@ -16,6 +17,11 @@ defmodule Gossip.MixProject do
       extra_applications: [:logger]
     ]
   end
+
+  defp escript do
+    [main_module: Tapestry.Application]
+  end
+
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do

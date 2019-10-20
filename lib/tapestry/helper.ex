@@ -4,7 +4,7 @@ defmodule Tapestry.Helpers do
   @bits_removed (@total_bits-@id_length)
 
 
-  def get_level(id1, id2, level) do
+  defp get_level(id1, id2, level) do
     if(id1 != 0 && id2 != 0 && rem(id1, 10) == rem(id2, 10)) do
       get_level(div(id1, 10), div(id2, 10), level+1)
     else
@@ -19,5 +19,14 @@ defmodule Tapestry.Helpers do
   def generate_id(str) do
     <<_::@bits_removed, id::@id_length>> = :crypto.hash(:sha256, str)
     id
+  end
+
+  def get_neighbors_at_lv(neighbors, lv) do
+    Enum.flat_map(neighbors, fn {{level, _rem}, v} ->
+      if(level === lv) do
+        [v]
+      end
+        []
+    end)
   end
 end
