@@ -38,15 +38,18 @@ defmodule Tapestry.Peer do
 
     need_to_know = GenServer.call(root, {:get_need_to_know, lv, self(), id})
 
+    need_to_know =
+      Enum.uniq(List.flatten(need_to_know))
+
     IO.inspect(need_to_know, label: "need to know nodes in gen_table")
 
-
-
     nbrs =
-      for {pid, nbr_id} <- need_to_know, into: %{} do
-        lv = Helpers.get_level(id, nbr_id)
+      for pid <- need_to_know, into: %{} do
+        nbr_id =
+          GenServer.call(pid, :get_id)
+        lv = Helpers.get_level(nbr_id, id)
         rem = rem_at_level(lv, nbr_id)
-        {{lv, rem}, {pid, nbr_id}}
+        {{lv, rem}, pid}
       end
 
     IO.inspect(nbrs, label: "starting neighborhood")
@@ -68,8 +71,7 @@ defmodule Tapestry.Peer do
   def handle_call({:get_need_to_know, lv, new_pid, new_pid_id}, _from, st) do
     IO.inspect(lv, label: "get_need_to_know at level")
 
-    # current_id = Map.get(st, :id)
-    # lv = Helpers.get_level(id, current_id)
+    IO.inspect( Map.get(st, :neighbors))
 
     neighbors_at_lv =
       Map.get(st, :neighbors)
@@ -83,8 +85,9 @@ defmodule Tapestry.Peer do
       end
 
     new_table = add_node_to_table(st, new_pid, new_pid_id)
+    IO.inspect(new_table, label: "NEW TABLE")
 
-    {:reply, [{self(), Map.get(st, :id)}] ++ neighbors_at_lv ++ next_neighbors,
+    {:reply, [self()] ++ neighbors_at_lv ++ next_neighbors,
      Map.update(st, :neighbors, %{}, fn _x -> new_table end)}
   end
 
@@ -143,17 +146,19 @@ defmodule Tapestry.Peer do
   end
 
   defp next_hop(lv, id, neighbors) do
-    # if we have gone through all 40 levels, we know we are at root
-    if(lv == @id_length) do
-      # publish node with id = id
+    # if we have gone through all levels, we know we are at root
+    if(lv === @id_length) do
+      # publish node with id = id, we are at surrogate root
       create_node_from_root(id)
     else
       r = rem_at_level(lv, id)
       pid = find_peer_at_level(lv, r, neighbors)
 
+      IO.inspect(pid, label: "node at level #{lv}")
+
       # if find_peer_at_level returns the pid that called the function, no neighbors to hop to
       if(pid === self()) do
-        # publish node with id = id
+        # publish node with id = id, we are at surrogate root
         create_node_from_root(id)
       else
         GenServer.cast(pid, {:next_hop, lv + 1, id})
@@ -171,7 +176,7 @@ defmodule Tapestry.Peer do
 
     rem = rem_at_level(lv, id_to_add)
 
-    Map.put(n, {lv, rem}, {new_pid, id_to_add})
+    Map.put(n, {lv, rem}, new_pid)
   end
 
   defp rem_at_level(lv, id) do
@@ -185,7 +190,7 @@ defmodule Tapestry.Peer do
   defp find_peer_at_level(lv, r, neighbors, count) do
     case Map.get(neighbors, {lv, r}) do
       nil -> find_peer_at_level(lv, rem(r + 1, @base), neighbors, count + 1)
-      {pid, _id} -> pid
+      pid -> pid
     end
   end
 

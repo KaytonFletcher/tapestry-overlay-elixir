@@ -25,8 +25,10 @@ defmodule Tapestry.Helpers do
     Enum.flat_map(neighbors, fn {{level, _rem}, v} ->
       if(level === lv) do
         [v]
-      end
+      else
         []
+      end
+
     end)
   end
 end

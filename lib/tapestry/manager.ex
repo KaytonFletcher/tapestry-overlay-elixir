@@ -78,9 +78,8 @@ defmodule Tapestry.Manager do
 
   @impl GenServer
   def handle_info(:spawn_nodes, {nodes, reqs, hops, node_req_map}) do
-    IO.inspect(node_req_map, label: "spawning node from these")
-
     if(nodes > 0) do
+      IO.inspect(node_req_map, label: "spawning node from these")
       # generates random id using sha256 for each node
       id = Tapestry.Helpers.generate_id("node#{nodes}")
 
