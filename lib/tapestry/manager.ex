@@ -18,6 +18,7 @@ defmodule Tapestry.Manager do
   # API
 
   def add_node(pid, id) do
+    IO.puts("adding node")
     GenServer.cast(@me, {:add_node, {pid, id}})
   end
 
@@ -86,9 +87,9 @@ defmodule Tapestry.Manager do
       # tells random peer to publish new peer
       {{pid, _id}, _reqs} = Enum.random(node_req_map)
       GenServer.cast(pid, {:next_hop, id})
-      Process.send_after(self(), :spawn_nodes, 30)
+      Process.send_after(self(), :spawn_nodes, 40)
     else
-      Process.send_after(self(), :send_requests, 30)
+      Process.send_after(self(), :send_requests, 40)
     end
 
     {:noreply, {nodes - 1, reqs, hops, node_req_map}}
