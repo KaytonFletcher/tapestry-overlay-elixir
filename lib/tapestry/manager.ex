@@ -17,8 +17,8 @@ defmodule Tapestry.Manager do
 
   # API
 
-  def add_node(pid) do
-    GenServer.cast(@me, {:add_node, pid})
+  def add_node(pid, id) do
+    GenServer.cast(@me, {:add_node, {pid, id}})
   end
 
   def req_made() do
@@ -42,30 +42,55 @@ defmodule Tapestry.Manager do
   end
 
   @impl GenServer
-  def handle_cast({:add_node, pid}, {nodes, reqs, hops, mp}) do
-    {:noreply, {nodes, reqs, hops, Map.put(mp, pid, 0)}}
+  def handle_cast({:add_node, {pid, id}}, {nodes, reqs, hops, mp}) do
+    {:noreply, {nodes, reqs, hops, Map.put(mp, {pid, id}, 0)}}
   end
 
   @impl GenServer
-  def handle_info(:spawn_nodes, {nodes, reqs, hops, mp}) when mp == %{}  do
-    {:ok, pid} = Tapestry.Peer.start_link(Tapestry.Helpers.generate_id("node#{nodes}"))
-    mp = Map.put(%{}, pid, 0)
+  def handle_info(:send_requests, {_nodes, _reqs, _hops, mp}) when mp == %{} do
+    System.halt(0)
+  end
+
+  @impl GenServer
+  def handle_info(:send_requests, {nodes, reqs, hops, mp}) do
+    Enum.each(mp, fn {{req, id1}, _reqs} ->
+      {{_rec, id2}, _reqs} =
+        Map.delete(mp, {req, id1})
+        |> Enum.random()
+
+      GenServer.cast(req, {:start_requests, id2})
+    end)
+
+    new_map = for {pid, req} <- mp, into: %{}, do: {pid, req + 1}
+
+    {:noreply, {nodes, reqs, hops, new_map}}
+  end
+
+  @impl GenServer
+  def handle_info(:spawn_nodes, {nodes, reqs, hops, mp}) when mp == %{} do
+    id = Tapestry.Helpers.generate_id("node#{nodes}")
+    {:ok, pid} = Tapestry.Peer.start_link(id)
+    mp = Map.put(%{}, {pid, id}, 0)
     Process.send_after(self(), :spawn_nodes, 30)
-    {:noreply, {nodes-1, reqs, hops, mp}}
+    {:noreply, {nodes - 1, reqs, hops, mp}}
   end
 
   @impl GenServer
   def handle_info(:spawn_nodes, {nodes, reqs, hops, node_req_map}) do
     IO.inspect(node_req_map, label: "spawning node from these")
+
     if(nodes > 0) do
       # generates random id using sha256 for each node
       id = Tapestry.Helpers.generate_id("node#{nodes}")
 
       # tells random peer to publish new peer
-      {pid, _reqs} = Enum.random(node_req_map)
+      {{pid, _id}, _reqs} = Enum.random(node_req_map)
       GenServer.cast(pid, {:next_hop, id})
       Process.send_after(self(), :spawn_nodes, 30)
+    else
+      Process.send_after(self(), :send_requests, 30)
     end
-    {:noreply, {nodes-1, reqs, hops, node_req_map}}
+
+    {:noreply, {nodes - 1, reqs, hops, node_req_map}}
   end
 end

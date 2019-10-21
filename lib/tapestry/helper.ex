@@ -1,5 +1,5 @@
 defmodule Tapestry.Helpers do
-  @id_length 40
+  @id_length 16
   @total_bits 256
   @bits_removed (@total_bits-@id_length)
 
@@ -17,7 +17,7 @@ defmodule Tapestry.Helpers do
   end
 
   def generate_id(str) do
-    <<_::@bits_removed, id::@id_length>> = :crypto.hash(:sha256, str)
+    <<id::@id_length, _::@bits_removed, >> = :crypto.hash(:sha256, str)
     id
   end
 
