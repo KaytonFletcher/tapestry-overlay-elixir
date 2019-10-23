@@ -79,12 +79,15 @@ defmodule Tapestry.Manager do
   @impl GenServer
   def handle_info(:spawn_nodes, {nodes, reqs, hops, node_req_map}) do
     if(nodes > 0) do
-      IO.inspect(node_req_map, label: "spawning node from these")
       # generates random id using sha256 for each node
       id = Tapestry.Helpers.generate_id("node#{nodes}")
 
+
+
       # tells random peer to publish new peer
       {{pid, _id}, _reqs} = Enum.random(node_req_map)
+
+      IO.inspect(pid, label: "adding node #{id} from")
       GenServer.cast(pid, {:next_hop, id})
       Process.send_after(self(), :spawn_nodes, 40)
     else
