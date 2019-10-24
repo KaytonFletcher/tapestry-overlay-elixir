@@ -47,11 +47,11 @@ defmodule Tapestry.Helpers do
     rem(div(id, trunc(:math.pow(@base, lv))), @base)
   end
 
-  def closer_distance(to, id1, id2) do
+  def is_closer?(to, id1, id2) do
     if abs(id1-to) > abs(id2-to) do
-      id2
+      true
     else
-      id1
+      false
     end
   end
 end
