@@ -40,6 +40,7 @@ defmodule Tapestry.Peer do
 
     need_to_know = Enum.uniq(need_to_know)
 
+
     bp =
       for pid <- need_to_know, into: %{} do
         nbr_id = GenServer.call(pid, :get_id)
@@ -47,8 +48,6 @@ defmodule Tapestry.Peer do
         rem = Helpers.rem_at_level(lv, nbr_id)
         {{lv, rem}, pid}
       end
-
-    IO.inspect(bp, label: "backpointer list")
 
     need_to_know = traverse_backpointers(need_to_know, lv)
 
@@ -76,25 +75,6 @@ defmodule Tapestry.Peer do
     {:noreply, %Peer{id: id, neighbors: nbrs, backpointers: bp}}
   end
 
-  defp traverse_backpointers(neighbors, lv) do
-    if(lv >= 0) do
-      IO.puts("Traversing bps at level #{lv}")
-      nextNeighbors = neighbors
-
-      bp =
-        Enum.flat_map(neighbors, fn pid ->
-          GenServer.call(pid, {:get_bp_level, lv})
-        end)
-
-      IO.inspect(bp, label: "bp outside")
-      IO.inspect(bp ++ nextNeighbors)
-
-      traverse_backpointers(bp ++ nextNeighbors, lv - 1)
-    else
-      neighbors
-    end
-  end
-
   @impl GenServer
   def handle_call(:get_id, _from, st) do
     {:reply, Map.get(st, :id), st}
@@ -110,25 +90,24 @@ defmodule Tapestry.Peer do
 
   @impl GenServer
   def handle_call({:get_need_to_know, lv, new_pid, new_pid_id}, _from, st) do
-    # IO.inspect(lv, label: "get_need_to_know at level")
+    # neighbors_at_lv =
+    #   Map.get(st, :neighbors)
+    #   |> Helpers.get_neighbors_at_lv(lv)
 
-    # IO.inspect( Map.get(st, :neighbors))
+    # next_neighbors =
+    #   Enum.flat_map([self()] ++ neighbors_at_lv, fn nbr ->
+    #     GenServer.call(nbr, {:get_need_to_know, lv + 1, new_pid, new_pid_id})
+    #   end)
 
-    neighbors_at_lv =
-      Map.get(st, :neighbors)
-      |> Helpers.get_neighbors_at_lv(lv)
+    nbrs =
+      get_need_to_know(lv, Map.get(st, :neighbors), new_pid, new_pid_id)
 
-    # IO.inspect(neighbors_at_lv, label: "Getting next neigbors")
-
-    next_neighbors =
-      Enum.flat_map(neighbors_at_lv, fn nbr ->
-        GenServer.call(nbr, {:get_need_to_know, lv + 1, new_pid, new_pid_id})
-      end)
+      IO.inspect(nbrs, label: "neighborssss")
 
     new_table = add_node_to_table(st, new_pid, new_pid_id)
     # IO.inspect(new_table, label: "NEW TABLE")
 
-    {:reply, [self()] ++ neighbors_at_lv ++ next_neighbors,
+    {:reply, nbrs,
      Map.update(st, :neighbors, %{}, fn _x -> new_table end)}
   end
 
@@ -182,6 +161,55 @@ defmodule Tapestry.Peer do
     {:noreply, st}
   end
 
+  defp get_need_to_know(lv, neighbors, new_pid, new_pid_id) do
+    # IO.inspect( Map.get(st, :neighbors))
+    if( lv < @base && lv >= 0) do
+
+    neighbors_at_lv =
+      neighbors
+      |> Helpers.get_neighbors_at_lv(lv)
+      |> Enum.uniq()
+
+    #IO.inspect(neighbors_at_lv, label: "NEIGHBORS AT LEVEL")
+
+    more =
+      get_need_to_know(lv+1, neighbors, new_pid, new_pid_id)
+      |> Enum.uniq()
+
+      IO.inspect(more, label: "MORE")
+
+    next_neighbors =
+      Enum.flat_map(neighbors_at_lv, fn nbr ->
+        GenServer.call(nbr, {:get_need_to_know, lv + 1, new_pid, new_pid_id})
+      end) |> Enum.uniq()
+
+      #IO.inspect(next_neighbors, label: "NEXT NEIGHBORS")
+      ([self()] ++ more ++ neighbors_at_lv ++ next_neighbors) |> Enum.uniq()
+    else
+      []
+    end
+  end
+
+  defp traverse_backpointers(neighbors, lv) do
+    if(lv >= 0) do
+      IO.puts("Traversing bps at level #{lv}")
+      nextNeighbors = neighbors |> Enum.uniq()
+
+
+      bp =
+        Enum.flat_map(neighbors, fn pid ->
+          GenServer.call(pid, {:get_bp_level, lv})
+        end) |> Enum.uniq()
+
+      #IO.inspect(bp, label: "bp outside")
+      #IO.inspect(bp ++ nextNeighbors)
+
+      traverse_backpointers(bp ++ nextNeighbors, lv - 1)
+    else
+      neighbors
+    end
+  end
+
   defp find_reciever(id, lv, neighbors, current_id) do
     cond do
       current_id == id ->
@@ -198,20 +226,9 @@ defmodule Tapestry.Peer do
         r = Helpers.rem_at_level(lv, id)
         pid = find_peer_at_level(lv, r, neighbors)
 
-        # if(id == 7803) do
-        #   IO.inspect(pid, label: "Remainder: #{r} Level: #{lv} Current id: #{current_id}  ")
-        # end
-        # if(current_id == 7803) do
-        #   IO.inspect(pid, label: "Remainder: #{r} Level: #{lv} Looking for id: #{id}  ")
-        # end
-
         # if find_peer_at_level returns the pid that called the function, no neighbors to hop to
         if(pid === self()) do
-          if(current_id === id) do
-            IO.puts("FOUND THE CORRECT ID: #{current_id}")
-          else
-            IO.puts("NOT GOOD CHIEF #{current_id} != id to find: #{id}")
-          end
+          find_reciever(id, lv + 1, neighbors, current_id)
         else
           IO.inspect(pid, label: "Hopping from #{current_id} to")
           GenServer.cast(pid, {:send_message, id, lv + 1})
@@ -233,7 +250,8 @@ defmodule Tapestry.Peer do
       # if find_peer_at_level returns the pid that called the function, no neighbors to hop to
       if(pid === self()) do
         # publish node with id = id, we are at surrogate root
-        create_node_from_root(id)
+        # create_node_from_root(id)
+        next_hop(lv + 1, id, neighbors)
       else
         GenServer.cast(pid, {:next_hop, lv + 1, id})
       end
@@ -250,14 +268,17 @@ defmodule Tapestry.Peer do
     pid = Map.get(n, {lv, rem})
 
     if(pid) do
+
       id2 = GenServer.call(pid, :get_id)
       IO.inspect("CONFLICT")
 
       if(Helpers.is_closer?(id, id2, id_to_add)) do
         Map.put(n, {lv, rem}, new_pid)
+      else
+        n
       end
     else
-      Map.put(n, {lv, rem}, new_pid)
+    Map.put(n, {lv, rem}, new_pid)
     end
   end
 

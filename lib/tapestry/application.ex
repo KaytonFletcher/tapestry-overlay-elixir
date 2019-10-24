@@ -13,7 +13,7 @@ defmodule Tapestry.Application do
   end
 
   def main(args \\ []) do
-    :observer.start()
+   # :observer.start()
 
     {nodes, requests} = parse_args(args)
 
