@@ -2,7 +2,9 @@
              [{applications,[kernel,stdlib,elixir,logger]},
               {description,"tapestry"},
               {modules,['Elixir.Tapestry.Application',
-                        'Elixir.Tapestry.Helpers','Elixir.Tapestry.Manager',
-                        'Elixir.Tapestry.Peer']},
+                        'Elixir.Tapestry.Manager','Elixir.Tapestry.Math',
+                        'Elixir.Tapestry.Peer',
+                        'Elixir.Tapestry.Peer.Addition',
+                        'Elixir.Tapestry.Peer.Messaging']},
               {registered,[]},
               {vsn,"0.1.0"}]}.

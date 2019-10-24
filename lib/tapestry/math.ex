@@ -1,13 +1,12 @@
-defmodule Tapestry.Helpers do
+defmodule Tapestry.Math do
   @id_length 16
   @total_bits 256
-  @bits_removed (@total_bits-@id_length)
+  @bits_removed @total_bits - @id_length
   @base 16
-
 
   defp get_level(id1, id2, level) do
     if(id1 != 0 && id2 != 0 && rem(id1, @base) == rem(id2, @base)) do
-      get_level(div(id1, @base), div(id2, @base), level+1)
+      get_level(div(id1, @base), div(id2, @base), level + 1)
     else
       level
     end
@@ -18,7 +17,7 @@ defmodule Tapestry.Helpers do
   end
 
   def generate_id(str) do
-    <<id::@id_length, _::@bits_removed, >> = :crypto.hash(:sha256, str)
+    <<id::@id_length, _::@bits_removed>> = :crypto.hash(:sha256, str)
     id
   end
 
@@ -33,7 +32,6 @@ defmodule Tapestry.Helpers do
   end
 
   def get_bp_at_lv(bp, lv) do
-    IO.inspect(bp, label: "BACKPOINTERS")
     Enum.flat_map(bp, fn {{level, _rem}, v} ->
       if(level === lv) do
         [v]
@@ -48,10 +46,25 @@ defmodule Tapestry.Helpers do
   end
 
   def is_closer?(to, id1, id2) do
-    if abs(id1-to) > abs(id2-to) do
+    if abs(id1 - to) > abs(id2 - to) do
       true
     else
       false
     end
+  end
+
+  defp find_peer_at_level(_lv, _r, _neighbors, @base) do
+    self()
+  end
+
+  defp find_peer_at_level(lv, r, neighbors, count) do
+    case Map.get(neighbors, {lv, r}) do
+      nil -> find_peer_at_level(lv, rem(r + 1, @base), neighbors, count + 1)
+      pid -> pid
+    end
+  end
+
+  def find_peer_at_level(lv, r, neighbors) do
+    find_peer_at_level(lv, r, neighbors, 0)
   end
 end

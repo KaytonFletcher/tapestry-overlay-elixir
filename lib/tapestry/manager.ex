@@ -1,5 +1,7 @@
 defmodule Tapestry.Manager do
   use GenServer
+  alias Tapestry.Math
+
   @me __MODULE__
 
   # MANAGER CREATION FUNCTIONS
@@ -15,31 +17,28 @@ defmodule Tapestry.Manager do
     {:ok, st}
   end
 
-  # API
+  ## API ##
 
   def add_node(pid, id) do
-    IO.puts("adding node")
     GenServer.cast(@me, {:add_node, {pid, id}})
   end
 
-  def req_made() do
-    GenServer.cast(@me, {:req_made, self()})
+  # peer sends manager number of hops it took to complete request
+  def req_made(hops) do
+    GenServer.cast(@me, {:req_made, self(), hops})
   end
 
-  def hop() do
-    GenServer.cast(@me, :hop)
-  end
-
-  # Server
+  ## Server ##
 
   @impl GenServer
-  def handle_cast(:hop, {nodes, reqs, hops, reqs_per_node}) do
-    {:noreply, {nodes, reqs, hops + 1, reqs_per_node}}
-  end
+  def handle_cast({:req_made, pid, new_hops}, {reqs, hops, mp, start}) do
+    new_mp = Map.update!(mp, pid, fn val -> val + 1 end)
 
-  @impl GenServer
-  def handle_cast({:req_made, pid}, {nodes, reqs, hops, reqs_per_node}) do
-    {:noreply, {nodes, reqs, hops, Map.update(reqs_per_node, pid, 1, fn val -> val + 1 end)}}
+    if(Map.get(mp, pid) == reqs) do
+      {:noreply, {reqs, [new_hops] ++ hops, Map.delete(new_mp, pid), start}}
+    else
+      {:noreply, {reqs, [new_hops] ++ hops, new_mp, start}}
+    end
   end
 
   @impl GenServer
@@ -53,7 +52,9 @@ defmodule Tapestry.Manager do
   end
 
   @impl GenServer
-  def handle_info(:send_requests, {nodes, reqs, hops, mp}) do
+  def handle_info(:send_requests, {_nodes, reqs, hops, mp}) do
+    start = System.monotonic_time(:millisecond)
+
     Enum.each(mp, fn {{req, id1}, _reqs} ->
       {{_rec, id2}, _reqs} =
         Map.delete(mp, {req, id1})
@@ -62,14 +63,15 @@ defmodule Tapestry.Manager do
       GenServer.cast(req, {:start_requests, id2})
     end)
 
-    new_map = for {pid, req} <- mp, into: %{}, do: {pid, req + 1}
+    # at this no peers requests have completed
+    new_map = for {{pid, _id}, _req} <- mp, into: %{}, do: {pid, 0}
 
-    {:noreply, {nodes, reqs, hops, new_map}}
+    {:noreply, {reqs, hops, new_map, start}}
   end
 
   @impl GenServer
   def handle_info(:spawn_nodes, {nodes, reqs, hops, mp}) when mp == %{} do
-    id = Tapestry.Helpers.generate_id("node#{nodes}")
+    id = Math.generate_id("node#{nodes}")
     {:ok, pid} = Tapestry.Peer.start_link(id)
     mp = Map.put(%{}, {pid, id}, 0)
     Process.send_after(self(), :spawn_nodes, 30)
@@ -80,14 +82,12 @@ defmodule Tapestry.Manager do
   def handle_info(:spawn_nodes, {nodes, reqs, hops, node_req_map}) do
     if(nodes > 0) do
       # generates random id using sha256 for each node
-      id = Tapestry.Helpers.generate_id("node#{nodes}")
-
-
+      id = Math.generate_id("node#{nodes}")
 
       # tells random peer to publish new peer
       {{pid, _id}, _reqs} = Enum.random(node_req_map)
 
-      IO.inspect(pid, label: "adding node #{id} from")
+      # IO.inspect(pid, label: "adding node #{id} from")
       GenServer.cast(pid, {:next_hop, id})
       Process.send_after(self(), :spawn_nodes, 40)
     else
