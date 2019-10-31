@@ -12,10 +12,12 @@ defmodule Tapestry.Application do
     end
   end
 
-  def main(args \\ []) do
+  def main() do
    # :observer.start()
 
-    {nodes, requests} = parse_args(args)
+
+
+    {nodes, requests} = parse_args(System.argv())
 
     {:ok, pid} = Tapestry.Manager.start_link({nodes, requests})
 
@@ -27,3 +29,5 @@ defmodule Tapestry.Application do
     end
   end
 end
+
+Tapestry.Application.main()

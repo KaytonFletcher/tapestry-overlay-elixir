@@ -1,5 +1,5 @@
 defmodule Tapestry.Math do
-  @id_length 16
+  @id_length 40
   @total_bits 256
   @bits_removed @total_bits - @id_length
   @base 16
@@ -22,9 +22,9 @@ defmodule Tapestry.Math do
   end
 
   def get_neighbors_at_lv(neighbors, lv) do
-    Enum.flat_map(neighbors, fn {{level, _rem}, v} ->
+    Enum.flat_map(neighbors, fn {{level, _rem}, {pid, id}} ->
       if(level === lv) do
-        [v]
+        [{pid, id}]
       else
         []
       end
@@ -53,18 +53,18 @@ defmodule Tapestry.Math do
     end
   end
 
-  defp find_peer_at_level(_lv, _r, _neighbors, @base) do
-    self()
+  defp find_peer_at_level(current_id, _lv, _r, _neighbors, @base) do
+    {self(), current_id}
   end
 
-  defp find_peer_at_level(lv, r, neighbors, count) do
+  defp find_peer_at_level(current_id, lv, r, neighbors, count) do
     case Map.get(neighbors, {lv, r}) do
-      nil -> find_peer_at_level(lv, rem(r + 1, @base), neighbors, count + 1)
-      pid -> pid
+      nil -> find_peer_at_level(current_id, lv, rem(r + 1, @base), neighbors, count + 1)
+      {pid, id} -> {pid, id}
     end
   end
 
-  def find_peer_at_level(lv, r, neighbors) do
-    find_peer_at_level(lv, r, neighbors, 0)
+  def find_peer_at_level(current_id, lv, r, neighbors) do
+    find_peer_at_level(current_id, lv, r, neighbors, 0)
   end
 end

@@ -7,12 +7,11 @@ defmodule Tapestry.Manager do
   # MANAGER CREATION FUNCTIONS
 
   def start_link({nodes, requests}) do
-    GenServer.start_link(__MODULE__, {nodes, requests, 0, %{}}, name: @me)
+    GenServer.start_link(__MODULE__, {nodes, requests, [], %{}, nodes * requests}, name: @me)
   end
 
   @impl GenServer
   def init(st) do
-    IO.inspect(self(), label: "manager pid")
     Process.send_after(self(), :spawn_nodes, 0)
     {:ok, st}
   end
@@ -23,63 +22,63 @@ defmodule Tapestry.Manager do
     GenServer.cast(@me, {:add_node, {pid, id}})
   end
 
-  # peer sends manager number of hops it took to complete request
-  def req_made(hops) do
-    GenServer.cast(@me, {:req_made, self(), hops})
+  def req_finished(hops) do
+    GenServer.cast(@me, {:req_finished, hops})
   end
 
   ## Server ##
 
   @impl GenServer
-  def handle_cast({:req_made, pid, new_hops}, {reqs, hops, mp, start}) do
-    new_mp = Map.update!(mp, pid, fn val -> val + 1 end)
+  def handle_cast({:req_finished, new_hop}, {reqs, hops, num_hops, mp, start, total_reqs}) do
+    new_hops = [new_hop] ++ hops
 
-    if(Map.get(mp, pid) == reqs) do
-      {:noreply, {reqs, [new_hops] ++ hops, Map.delete(new_mp, pid), start}}
+    if(num_hops + 1 === total_reqs) do
+      Enum.max(new_hops)
+      |> IO.inspect(label: "Max hops")
+
+      #IO.inspect(System.monotonic_time(:millisecond) - start, label: "time taken to send messages")
+
+      System.halt(0)
+    end
+
+    {:noreply, {reqs, new_hops, num_hops + 1, mp, start, total_reqs}}
+  end
+
+  @impl GenServer
+  def handle_cast({:add_node, {pid, id}}, {nodes, reqs, hops, mp, total_reqs}) do
+    {:noreply, {nodes, reqs, hops, Map.put(mp, {pid, id}, 0), total_reqs}}
+  end
+
+  @impl GenServer
+  def handle_info(:send_requests, {reqs, hops, num_hops, mp, start, total_reqs}) do
+    if(reqs > 0) do
+      Enum.each(mp, fn {pid1, {_reqs, _id}} ->
+        {_pid2, {_reqs, id2}} =
+          Map.delete(mp, pid1)
+          |> Enum.random()
+
+        GenServer.cast(pid1, {:start_requests, id2})
+      end)
+
+      new_map = for {pid, {req, id}} <- mp, into: %{}, do: {pid, {req + 1, id}}
+      Process.send_after(self(), :send_requests, 1000)
+      {:noreply, {reqs - 1, hops, num_hops, new_map, start, total_reqs}}
     else
-      {:noreply, {reqs, [new_hops] ++ hops, new_mp, start}}
+      {:noreply, {reqs, hops, num_hops, mp, start, total_reqs}}
     end
   end
 
   @impl GenServer
-  def handle_cast({:add_node, {pid, id}}, {nodes, reqs, hops, mp}) do
-    {:noreply, {nodes, reqs, hops, Map.put(mp, {pid, id}, 0)}}
-  end
-
-  @impl GenServer
-  def handle_info(:send_requests, {_nodes, _reqs, _hops, mp}) when mp == %{} do
-    System.halt(0)
-  end
-
-  @impl GenServer
-  def handle_info(:send_requests, {_nodes, reqs, hops, mp}) do
-    start = System.monotonic_time(:millisecond)
-
-    Enum.each(mp, fn {{req, id1}, _reqs} ->
-      {{_rec, id2}, _reqs} =
-        Map.delete(mp, {req, id1})
-        |> Enum.random()
-
-      GenServer.cast(req, {:start_requests, id2})
-    end)
-
-    # at this no peers requests have completed
-    new_map = for {{pid, _id}, _req} <- mp, into: %{}, do: {pid, 0}
-
-    {:noreply, {reqs, hops, new_map, start}}
-  end
-
-  @impl GenServer
-  def handle_info(:spawn_nodes, {nodes, reqs, hops, mp}) when mp == %{} do
+  def handle_info(:spawn_nodes, {nodes, reqs, hops, mp, total_reqs}) when mp == %{} do
     id = Math.generate_id("node#{nodes}")
     {:ok, pid} = Tapestry.Peer.start_link(id)
     mp = Map.put(%{}, {pid, id}, 0)
     Process.send_after(self(), :spawn_nodes, 30)
-    {:noreply, {nodes - 1, reqs, hops, mp}}
+    {:noreply, {nodes - 1, reqs, hops, mp, total_reqs}}
   end
 
   @impl GenServer
-  def handle_info(:spawn_nodes, {nodes, reqs, hops, node_req_map}) do
+  def handle_info(:spawn_nodes, {nodes, reqs, hops, node_req_map, total_reqs}) do
     if(nodes > 0) do
       # generates random id using sha256 for each node
       id = Math.generate_id("node#{nodes}")
@@ -90,10 +89,19 @@ defmodule Tapestry.Manager do
       # IO.inspect(pid, label: "adding node #{id} from")
       GenServer.cast(pid, {:next_hop, id})
       Process.send_after(self(), :spawn_nodes, 40)
+      {:noreply, {nodes - 1, reqs, hops, node_req_map, total_reqs}}
     else
-      Process.send_after(self(), :send_requests, 40)
-    end
+      nds = div(total_reqs, reqs)
+      if(nds != map_size(node_req_map)) do
 
-    {:noreply, {nodes - 1, reqs, hops, node_req_map}}
+        Process.send_after(self(), :spawn_nodes, 50)
+        {:noreply, {nodes, reqs, hops, node_req_map, total_reqs}}
+      else
+         # no peer has made a request
+        new_map = for {{pid, id}, _req} <- node_req_map, into: %{}, do: {pid, {0, id}}
+        Process.send_after(self(), :send_requests, 20)
+        {:noreply, {reqs, hops, 0, new_map, System.monotonic_time(:millisecond), total_reqs}}
+      end
+    end
   end
 end

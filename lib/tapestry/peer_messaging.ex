@@ -1,29 +1,26 @@
 defmodule Tapestry.Peer.Messaging do
   alias Tapestry.Math
-  @id_length 16
+  @id_length 40
 
-  def find_reciever(id, lv, neighbors, current_id) do
+  def find_reciever(id, lv, neighbors, current_id, hops) do
     cond do
       current_id == id ->
-        IO.puts("FOUND THE CORRECT ID: #{current_id}")
+        Tapestry.Manager.req_finished(hops)
 
       lv == @id_length ->
-        if(current_id === id) do
-          IO.puts("FOUND THE CORRECT ID: #{current_id}")
-        else
-          IO.puts("NOT GOOD CHIEF #{current_id} != id to find: #{id}")
-        end
+        Tapestry.Manager.req_finished(hops)
+
 
       true ->
         r = Math.rem_at_level(lv, id)
-        pid = Math.find_peer_at_level(lv, r, neighbors)
+        {pid, id} = Math.find_peer_at_level(current_id, lv, r, neighbors)
 
-        # if find_peer_at_level returns the pid that called the function, no neighbors to hop to
+        # if find_peer_at_level returns the pid that called the function, look at next level
         if(pid === self()) do
-          find_reciever(id, lv + 1, neighbors, current_id)
+          find_reciever(id, lv + 1, neighbors, current_id, hops)
         else
           # IO.inspect(pid, label: "Hopping from #{current_id} to")
-          GenServer.cast(pid, {:send_message, id, lv + 1})
+          GenServer.cast(pid, {:send_message, id, lv + 1, hops+1})
         end
     end
   end
